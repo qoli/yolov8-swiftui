@@ -7,40 +7,62 @@
 
 import SwiftUI
 import os.log
-import AVFoundation
+import PhotosUI
 import UIKit
 import Vision
 import CoreML
 
 struct ContentView: View {
     @StateObject private var model = DataModel()
+    @State private var selectedItem: PhotosPickerItem?
     
     var body: some View {
-        GeometryReader { geometry in
-            if let previewImage = model.previewImage {
-                previewImage
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: geometry.size.width, height: geometry.size.height)
-                    .overlay {
-                        GeometryReader { (geometry: GeometryProxy) in
-                            ForEach(model.recognizedObjects){ obj in
-                                BoundingBox(imageViewGeometry: geometry, label: obj.label, rect: obj.boundingBox, color: Color.red, hideLabel: false)
+        VStack {
+            GeometryReader { geometry in
+                if let previewImage = model.previewImage {
+                    previewImage
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: geometry.size.width, height: geometry.size.height)
+                        .overlay {
+                            GeometryReader { (geometry: GeometryProxy) in
+                                ForEach(model.recognizedTexts) { text in
+                                    BoundingBox(imageViewGeometry: geometry,
+                                              label: text.text,
+                                              rect: text.boundingBox,
+                                              color: Color.green,
+                                              hideLabel: false)
+                                }
+                                
+                                if let densestRegion = model.densestRegion {
+                                    BoundingBox(imageViewGeometry: geometry,
+                                              label: "文本密度最高區域",
+                                              rect: densestRegion,
+                                              color: Color.red,
+                                              hideLabel: false)
+                                }
                             }
                         }
-                    }
+                } else {
+                    Color.black
+                }
+            }
+            
+            PhotosPicker(selection: $selectedItem,
+                        matching: .images) {
+                Text("選擇圖片")
+                    .padding()
+                    .background(Color.blue)
+                    .foregroundColor(.white)
+                    .cornerRadius(8)
+            }
+            .onChange(of: selectedItem) { newItem in
+                Task {
+                    await model.processPickerResult(newItem)
+                }
             }
         }
-        .ignoresSafeArea()
-        .background(.black)
-        .onDisappear {
-            model.camera.stop()
-        }
-        .onAppear {
-            Task {
-                await model.camera.start()
-            }
-        }
+        .ignoresSafeArea(.all, edges: .top)
     }
 
     // Draw a bounding box around the recognized object
@@ -51,7 +73,7 @@ struct ContentView: View {
                 .overlay {
                     hideLabel ? nil : Text(label)
                         .foregroundColor(.white)
-                        .background(Color.red)
+                        .background(Color.green)
                         .position(x: cgRect.minX, y: cgRect.minY)
                 }
     }
@@ -68,78 +90,183 @@ struct ContentView: View {
     
     @MainActor class DataModel : ObservableObject {
         @Published var previewImage: Image?
-        @Published var recognizedObjects: [RecognizedObject] = []
+        @Published var recognizedTexts: [RecognizedText] = []
+        @Published var densestRegion: CGRect?
         
-        private var YOLOv8Model: VNCoreMLModel?
-        let camera = Camera()
-        
-        init() {
-            if let model = try? YOLOv8s().model {
-                if let vnModel = try? VNCoreMLModel(for: model) {
-                    YOLOv8Model = vnModel
-                }
-            }
-            if let _ = YOLOv8Model {
-                logger.info("Loaded YOLOv8n model")
-            } else {
-                logger.error("Failed to load YOLOv8n model")
-            }
+        // 密度分析配置
+        struct DensityConfig {
+            var sections: Int           // 水平區域數量
+            var minimumDensity: Int    // 最小文字數量閾值
             
-            Task {
-                await camera.start()
-                await consumePreviewStream()
+            static let `default` = DensityConfig(
+                sections: 10,
+                minimumDensity: 1
+            )
+        }
+        
+        var densityConfig: DensityConfig = .default
+        
+        init(densityConfig: DensityConfig = .default) {
+            self.densityConfig = densityConfig
+        }
+        
+        // 更新密度分析配置
+        func updateDensityConfig(_ config: DensityConfig) {
+            self.densityConfig = config
+            // 如果有現有的識別結果，重新進行密度分析
+            if !recognizedTexts.isEmpty {
+                densestRegion = nil // 清除現有的密度區域
+                // 重新分析密度
+                DispatchQueue.main.async {
+                    if let processedImage = (self.previewImage as? Image)?.asUIImage() {
+                        self.analyzeDensity(from: self.recognizedTexts.map { VNRecognizedTextObservation(text: $0) }, imageSize: processedImage.size)
+                    }
+                }
             }
         }
         
-        private func consumePreviewStream() async {
-            for await ciImage in camera.previewStream.stream {
-                Task { @MainActor in
-                    let ciContext = CIContext()
-                    guard let cgImage = ciContext.createCGImage(ciImage, from: ciImage.extent) else { return }
-                    previewImage = Image(decorative: cgImage, scale: 1)
-
-                    if let YOLOv8nModel = self.YOLOv8Model {
-                        // Create a VNCoreMLRequest with the YOLOv8 model
-                        let request = VNCoreMLRequest(model: YOLOv8nModel) { (request, error) in
-                            if let error = error {
-                                logger.error("Failed to process YOLOv8n model: \(error)")
-                                return
-                            }
-                            
-                            // Process the results
-                            if let results = request.results as? [VNRecognizedObjectObservation] {
-                                // get results with confidence > 0.9
-                                let results = results.filter { $0.labels[0].confidence > 0.9 }
-                                // convert the results to RecognizedObject
-                                self.recognizedObjects = results.map { $0.toRecognizedObject($0) }
-                            }
+        private func analyzeDensity(from observations: [VNRecognizedTextObservation], imageSize: CGSize) {
+            // 使用配置的區域數量
+            let sections = densityConfig.sections
+            var densities = Array(repeating: 0, count: sections)
+            
+            // 計算每個區域中的文本框數量
+            for observation in observations {
+                let normalizedY = observation.boundingBox.midY
+                let sectionIndex = Int(normalizedY * CGFloat(sections))
+                if sectionIndex < sections {
+                    densities[sectionIndex] += 1
+                }
+            }
+            
+            // 找出密度最高的區域
+            if let maxDensityIndex = densities.indices.max(by: { densities[$0] < densities[$1] }) {
+                let sectionHeight = 1.0 / CGFloat(sections)
+                let y = CGFloat(maxDensityIndex) * sectionHeight
+                
+                // 設置密度最高區域的框
+                self.densestRegion = CGRect(x: 0,
+                                          y: y,
+                                          width: 1.0,
+                                          height: sectionHeight)
+                
+                logger.info("找到密度最高區域：第 \(maxDensityIndex + 1) 區，包含 \(densities[maxDensityIndex]) 個文本框")
+            }
+        }
+        
+        func processPickerResult(_ item: PhotosPickerItem?) async {
+            guard let item = item else {
+                logger.error("未選擇圖片")
+                return
+            }
+            
+            do {
+                guard let data = try await item.loadTransferable(type: Data.self) else {
+                    logger.error("無法載入圖片數據")
+                    return
+                }
+                
+                guard let uiImage = UIImage(data: data) else {
+                    logger.error("無法創建 UIImage")
+                    return
+                }
+                
+                // 處理圖片方向
+                let processedImage = uiImage.imageOriented
+                self.previewImage = Image(uiImage: processedImage)
+                logger.info("成功載入並顯示圖片")
+                
+                // 創建並配置文字識別請求
+                let request = VNRecognizeTextRequest { [weak self] request, error in
+                    guard let self = self else { return }
+                    
+                    if let error = error {
+                        logger.error("文字識別請求失敗: \(error.localizedDescription)")
+                        return
+                    }
+                    
+                    guard let results = request.results as? [VNRecognizedTextObservation] else {
+                        logger.error("無法獲取文字識別結果")
+                        return
+                    }
+                    
+                    logger.info("檢測到 \(results.count) 個文字區域")
+                    
+                    Task { @MainActor in
+                        self.recognizedTexts = results.compactMap { observation -> RecognizedText? in
+                            guard let text = observation.topCandidates(1).first?.string else { return nil }
+                            logger.info("識別到文字: \(text)")
+                            return RecognizedText(text: text, boundingBox: observation.boundingBox)
                         }
-                        // Create a VNImageRequestHandler with the previewImage
-                        let handler = VNImageRequestHandler(ciImage: ciImage, options: [:])
-                        // Perform the request
-                        do {
-                            try handler.perform([request])
-                        } catch {
-                            print("Failed to perform request: \(error)")
+                        
+                        if self.recognizedTexts.isEmpty {
+                            logger.error("未檢測到任何文字")
+                        } else {
+                            // 分析文本密度
+                            self.analyzeDensity(from: results, imageSize: processedImage.size)
+                            logger.info("已完成文本密度分析")
                         }
                     }
                 }
+                
+                // 配置文字識別請求參數
+                request.recognitionLevel = .accurate
+                request.usesLanguageCorrection = true
+                request.minimumTextHeight = 0.02
+                request.recognitionLanguages = ["zh-Hant", "zh-Hans", "en-US"] // 支援繁體中文、簡體中文和英文
+                
+                // 使用原始圖片方向
+                let orientation = CGImagePropertyOrientation(uiImage.imageOrientation)
+                guard let cgImage = uiImage.cgImage else {
+                    logger.error("無法獲取 CGImage")
+                    return
+                }
+                
+                let handler = VNImageRequestHandler(cgImage: cgImage, orientation: orientation)
+                
+                // 執行文字識別請求
+                try handler.perform([request])
+                logger.info("已執行文字識別請求")
+                
+            } catch {
+                logger.error("圖片處理過程發生錯誤: \(error.localizedDescription)")
             }
         }
     }
 }
 
-struct RecognizedObject: Identifiable {
+struct RecognizedText: Identifiable {
     var id: UUID = UUID()
-    var label: String
+    var text: String
     var boundingBox: CGRect
 }
 
-extension VNRecognizedObjectObservation {
-    // Convert a VNRecognizedObjectObservation to a RecognizedObject
-    func toRecognizedObject(_ observation: VNRecognizedObjectObservation) -> RecognizedObject {
-        let firstLabel = observation.labels.first?.identifier ?? "unknown"
-        return RecognizedObject(label: firstLabel, boundingBox: observation.boundingBox)
+extension CGImagePropertyOrientation {
+    init(_ uiOrientation: UIImage.Orientation) {
+        switch uiOrientation {
+        case .up: self = .up
+        case .upMirrored: self = .upMirrored
+        case .down: self = .down
+        case .downMirrored: self = .downMirrored
+        case .left: self = .left
+        case .leftMirrored: self = .leftMirrored
+        case .right: self = .right
+        case .rightMirrored: self = .rightMirrored
+        @unknown default: self = .up
+        }
+    }
+}
+
+extension UIImage {
+    var imageOriented: UIImage {
+        if imageOrientation == .up { return self }
+        
+        UIGraphicsBeginImageContextWithOptions(size, false, scale)
+        draw(in: CGRect(origin: .zero, size: size))
+        let normalizedImage = UIGraphicsGetImageFromCurrentImageContext()
+        UIGraphicsEndImageContext()
+        
+        return normalizedImage ?? self
     }
 }
 

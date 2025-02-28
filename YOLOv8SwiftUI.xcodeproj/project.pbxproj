@@ -7,7 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		3C13A70E2BAA2F5F00CC67B7 /* Camera.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C13A70D2BAA2F5F00CC67B7 /* Camera.swift */; };
 		3C13A7112BAA4E8D00CC67B7 /* YOLOv8n.mlmodel in Sources */ = {isa = PBXBuildFile; fileRef = 3C13A7102BAA4E8D00CC67B7 /* YOLOv8n.mlmodel */; };
 		3C13A7132BAA63B700CC67B7 /* YOLOv8s.mlmodel in Sources */ = {isa = PBXBuildFile; fileRef = 3C13A7122BAA63B700CC67B7 /* YOLOv8s.mlmodel */; };
 		3C54E3D72BAA2717005BCD19 /* YOLOv8SwiftUIApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C54E3D62BAA2717005BCD19 /* YOLOv8SwiftUIApp.swift */; };
@@ -17,7 +16,6 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		3C13A70D2BAA2F5F00CC67B7 /* Camera.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Camera.swift; sourceTree = "<group>"; };
 		3C13A7102BAA4E8D00CC67B7 /* YOLOv8n.mlmodel */ = {isa = PBXFileReference; lastKnownFileType = file.mlmodel; path = YOLOv8n.mlmodel; sourceTree = "<group>"; };
 		3C13A7122BAA63B700CC67B7 /* YOLOv8s.mlmodel */ = {isa = PBXFileReference; lastKnownFileType = file.mlmodel; path = YOLOv8s.mlmodel; sourceTree = "<group>"; };
 		3C54E3D32BAA2717005BCD19 /* YOLOv8SwiftUI.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = YOLOv8SwiftUI.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -70,7 +68,6 @@
 				3C13A70F2BAA4E2B00CC67B7 /* CoreMLModels */,
 				3C54E3D62BAA2717005BCD19 /* YOLOv8SwiftUIApp.swift */,
 				3C54E3D82BAA2717005BCD19 /* ContentView.swift */,
-				3C13A70D2BAA2F5F00CC67B7 /* Camera.swift */,
 				3C54E3DA2BAA2719005BCD19 /* Assets.xcassets */,
 				3C54E3DC2BAA2719005BCD19 /* YOLOv8SwiftUI.entitlements */,
 				3C54E3DD2BAA2719005BCD19 /* Preview Content */,
@@ -160,7 +157,6 @@
 				3C54E3D72BAA2717005BCD19 /* YOLOv8SwiftUIApp.swift in Sources */,
 				3C13A7132BAA63B700CC67B7 /* YOLOv8s.mlmodel in Sources */,
 				3C13A7112BAA4E8D00CC67B7 /* YOLOv8n.mlmodel in Sources */,
-				3C13A70E2BAA2F5F00CC67B7 /* Camera.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -305,7 +301,7 @@
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
@@ -344,7 +340,7 @@
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
